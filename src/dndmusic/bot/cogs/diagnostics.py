@@ -12,6 +12,21 @@ from ..client import BotContext
 DM_CHAR_LIMIT = 1900
 
 
+async def _is_operator(bot, ctx) -> bool:
+    """Only the bot's owner, or someone who can manage the server.
+
+    The debug log names files, folders and servers; it is diagnostic output, not
+    something every member of a public server should be able to pull on demand.
+    """
+    try:
+        if await bot.is_owner(ctx.author):
+            return True
+    except Exception:
+        pass
+    permissions = getattr(ctx.author, "guild_permissions", None)
+    return bool(permissions and permissions.manage_guild)
+
+
 class DiagnosticsCog(CogBase):
     def __init__(self, bot, context: BotContext) -> None:
         self.bot = bot
@@ -19,6 +34,10 @@ class DiagnosticsCog(CogBase):
 
     @commands.command(name="debug")
     async def debug_dump(self, ctx) -> None:
+        if not await _is_operator(self.bot, ctx):
+            await ctx.send("Only the bot owner or a server manager can pull the debug log.")
+            return
+
         debug = self.context.debug
         try:
             dump = debug.dump()

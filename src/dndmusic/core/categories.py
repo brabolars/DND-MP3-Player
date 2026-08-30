@@ -26,6 +26,23 @@ DEFAULT_CATEGORIES: Sequence[Tuple[str, str]] = (
 
 FALLBACK_CATEGORY = "Other"
 
+#: Characters that would let a category name escape the library folder or break
+#: on Windows.  Category names become directory names, so they are sanitised
+#: rather than trusted.
+_ILLEGAL_IN_NAME = set('/\\:*?"<>|')
+_MAX_NAME_LENGTH = 64
+
+
+def sanitise_category(name: str) -> str:
+    """Reduce a typed name to something safe to use as a folder name.
+
+    Returns "" when nothing usable is left, which callers treat as a refusal.
+    """
+    cleaned = "".join(ch for ch in name.strip() if ch not in _ILLEGAL_IN_NAME)
+    cleaned = cleaned.strip(". ")          # ".." and trailing dots (Windows)
+    cleaned = " ".join(cleaned.split())    # collapse whitespace
+    return cleaned[:_MAX_NAME_LENGTH]
+
 
 @dataclass(frozen=True)
 class Category:
@@ -68,7 +85,7 @@ class CategoryRegistry:
         return any(item.name == name for item in self._items)
 
     def add(self, emoji: str, name: str) -> Optional[Category]:
-        name = name.strip()
+        name = sanitise_category(name)
         if not name or self.has(name):
             return None
         category = Category(f"{emoji} {name}".strip(), name)
@@ -88,9 +105,10 @@ class CategoryRegistry:
             return
         try:
             for entry in json.loads(file.read_text(encoding="utf-8")):
-                if not self.has(entry["name"]):
-                    self._items.append(Category(entry["display"], entry["name"]))
-                    (paths.music / entry["name"]).mkdir(parents=True, exist_ok=True)
+                name = sanitise_category(entry.get("name", ""))
+                if name and not self.has(name):
+                    self._items.append(Category(entry.get("display", name), name))
+                    (paths.music / name).mkdir(parents=True, exist_ok=True)
         except Exception as exc:  # corrupt file shouldn't kill startup
             print(f"  Failed to load custom categories: {exc}")
 

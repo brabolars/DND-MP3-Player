@@ -42,7 +42,18 @@ def _candidate_paths() -> List[Path]:
     return candidates
 
 
-def ensure_opus(log: Logger = print, allow_download: bool = True) -> bool:
+def download_allowed() -> bool:
+    """Fetching a DLL and loading it is code execution, so it is opt-in.
+
+    disnake ships libopus in its own package, which is where it is found on
+    virtually every install — so this path is a rarely-needed last resort, and
+    defaulting it off costs almost nothing.  Set DND_ALLOW_OPUS_DOWNLOAD=1 to
+    enable it.
+    """
+    return os.getenv("DND_ALLOW_OPUS_DOWNLOAD", "").strip() not in ("", "0", "false", "False")
+
+
+def ensure_opus(log: Logger = print, allow_download: bool = False) -> bool:
     """Return True if opus is loaded (or was already)."""
     if not DISCORD_AVAILABLE:
         return False
@@ -78,21 +89,36 @@ def ensure_opus(log: Logger = print, allow_download: bool = True) -> bool:
         except Exception:
             pass
 
-    if allow_download and sys.platform == "win32" and download_opus(log):
-        return disnake.opus.is_loaded()
+    if (allow_download or download_allowed()) and sys.platform == "win32":
+        if download_opus(log):
+            return disnake.opus.is_loaded()
+    elif sys.platform == "win32":
+        log(
+            "Opus not found. Place libopus-0.dll next to the app, or set "
+            "DND_ALLOW_OPUS_DOWNLOAD=1 to fetch it automatically."
+        )
 
     log("OPUS NOT LOADED — voice audio will NOT work. Place libopus-0.dll next to the app.")
     return False
 
 
 def download_opus(log: Logger = print) -> bool:
-    """Last resort on Windows: fetch the DLL from the official release."""
+    """Last resort on Windows: fetch the DLL from the official xiph release.
+
+    There is no signature to verify against, so this is only as trustworthy as
+    the transport and the host.  It is therefore opt-in, HTTPS-only, and the
+    result is sanity-checked before being loaded.
+    """
     try:
         import urllib.request
         import zipfile
 
+        if not OPUS_DOWNLOAD_URL.lower().startswith("https://"):
+            log("Refusing to download Opus over a non-HTTPS URL")
+            return False
+
         dest = Path(os.getcwd()) / "libopus-0.dll"
-        log("Downloading Opus...")
+        log(f"Downloading Opus from {OPUS_DOWNLOAD_URL}")
         with urllib.request.urlopen(OPUS_DOWNLOAD_URL, timeout=15) as response:
             archive = zipfile.ZipFile(io.BytesIO(response.read()))
             for entry in archive.namelist():
@@ -101,6 +127,11 @@ def download_opus(log: Logger = print) -> bool:
                     break
 
         if dest.exists() and dest.stat().st_size > 10_000:
+            with dest.open("rb") as handle:
+                if handle.read(2) != b"MZ":     # not a Windows DLL at all
+                    log("Downloaded file is not a DLL; discarding it")
+                    dest.unlink(missing_ok=True)
+                    return False
             disnake.opus.load_opus(str(dest))
             if disnake.opus.is_loaded():
                 log("Opus downloaded and loaded!")

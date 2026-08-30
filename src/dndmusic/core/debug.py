@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Iterable, List
 
 from ..config import APP_NAME, APP_VERSION
@@ -27,6 +28,25 @@ class DebugLogger:
         for line in lines:
             self.log(line, "SYS")
 
+    def redact(self, text: str) -> str:
+        """Replace local paths with placeholders.
+
+        The log goes to Discord via !debug, and full paths give away a Windows
+        username and directory layout for no diagnostic benefit.
+        """
+        from ..config import paths
+
+        replacements = [
+            (str(paths.root), "<data>"),
+            (str(Path.home()), "<home>"),
+        ]
+        for needle, placeholder in replacements:
+            if not needle:
+                continue
+            text = text.replace(needle, placeholder)
+            text = text.replace(needle.replace("\\", "/"), placeholder)
+        return text
+
     def dump(self) -> str:
         uptime = int((datetime.now() - self.session_start).total_seconds())
         header = (
@@ -35,7 +55,7 @@ class DebugLogger:
             f"Uptime: {uptime // 60}m {uptime % 60}s | Entries: {len(self.messages)}\n"
             f"{'=' * 40}\n"
         )
-        return header + "\n".join(self.messages)
+        return self.redact(header + "\n".join(self.messages))
 
     def last(self, count: int = 50) -> str:
-        return "\n".join(self.messages[-count:])
+        return self.redact("\n".join(self.messages[-count:]))

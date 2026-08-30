@@ -2,8 +2,11 @@
 name: Build Windows EXE
 
 on:
-  push:
-    tags: ["v*"]
+  # Publishing a release on GitHub builds the .exe and attaches it, so anyone
+  # can download and run it without installing Python.
+  release:
+    types: [published]
+  # Or build on demand from the Actions tab, without cutting a release.
   workflow_dispatch:
 
 jobs:
@@ -15,7 +18,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
 
       - name: Install dependencies
@@ -23,6 +26,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
+
+      - name: Stamp the version from the release tag
+        # So `--version` and the window title match the release people
+        # downloaded, instead of whatever was last hard-coded.
+        if: github.event_name == 'release'
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.release.tag_name }}" -replace '^v', ''
+          Write-Host "Stamping version $version"
+          $file = "src/dndmusic/config.py"
+          (Get-Content $file) -replace '^APP_VERSION = ".*"', "APP_VERSION = ""$version""" |
+            Set-Content $file
+          Select-String -Path $file -Pattern 'APP_VERSION'
 
       - name: Fetch native dependencies (opus + ffmpeg)
         continue-on-error: true
@@ -36,7 +52,7 @@ jobs:
           $dll = Get-ChildItem -Recurse opus_tmp -Filter "*opus*.dll" | Select-Object -First 1
           if ($dll) { Copy-Item $dll.FullName vendor/libopus-0.dll }
 
-          # ffmpeg — required for decoding and mixing
+          # ffmpeg — required for decoding, mixing and loudness measurement
           Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
           Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp -Force
           $exe = Get-ChildItem -Recurse ffmpeg_tmp -Filter "ffmpeg.exe" | Select-Object -First 1
@@ -45,23 +61,53 @@ jobs:
           Get-ChildItem vendor
 
       - name: Build
-        run: pyinstaller packaging/dnd_music_manager.spec --noconfirm --clean
+        # Same script you run locally, so a CI build and a desk build cannot drift.
+        run: python build.py
 
       - name: Smoke test the executable
-        continue-on-error: true
-        run: dist/DnDMusicManager.exe --version
+        run: |
+          dist/DnDMusicManager.exe --version
+          dist/DnDMusicManager.exe --help
+
+      - name: Package for download
+        shell: pwsh
+        run: |
+          $stage = "package/DnDMusicManager"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item dist/DnDMusicManager.exe $stage/
+          Copy-Item README.md $stage/
+          Copy-Item .env.example $stage/
+          Copy-Item docs/LOUDNESS.md $stage/ -ErrorAction SilentlyContinue
+          @"
+          D&D Music Manager
+          =================
+
+          1. Run DnDMusicManager.exe.
+          2. It will ask for a Discord bot token on first run.
+             Only needed for the bot; to use it as a plain music player,
+             choose Output = "This PC" and ignore the prompt.
+          3. Music, playlists and settings are stored next to the .exe.
+
+          FFmpeg and Opus are bundled — nothing else to install.
+          "@ | Set-Content $stage/START-HERE.txt
+          Compress-Archive -Path $stage -DestinationPath DnDMusicManager-windows.zip -Force
+          Get-ChildItem DnDMusicManager-windows.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: DnDMusicManager-windows
-          path: dist/DnDMusicManager.exe
+          path: |
+            dist/DnDMusicManager.exe
+            DnDMusicManager-windows.zip
           if-no-files-found: error
 
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Attach to the release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/DnDMusicManager.exe
-          generate_release_notes: true
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            dist/DnDMusicManager.exe
+            DnDMusicManager-windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

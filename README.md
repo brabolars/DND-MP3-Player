@@ -280,34 +280,45 @@ Windows. The banner printed at startup tells you if either is missing.
 
 ## Building the .exe
 
-Push a tag and GitHub Actions does the rest:
+**Publish a release on GitHub and the .exe builds itself.**
 
-```bash
-git tag v3.0.0
-git push origin v3.0.0
-```
+1. Releases → *Draft a new release*
+2. Create a tag such as `v4.1.0`, write the notes, **Publish release**
+3. `.github/workflows/build.yml` runs and, a few minutes later, attaches two
+   files to that release:
+   - `DnDMusicManager.exe` — the bare executable
+   - `DnDMusicManager-windows.zip` — the exe plus README, `.env.example` and a
+     short START-HERE.txt, which is the friendlier thing to hand a player
 
-`.github/workflows/build.yml` runs on `windows-latest`: it installs the
-dependencies, downloads `libopus-0.dll` and `ffmpeg.exe` into `vendor/`,
-runs PyInstaller against `packaging/dnd_music_manager.spec`, uploads the
-executable as a build artifact and attaches it to the GitHub release.
+The build runs on `windows-latest`: installs the dependencies, stamps
+`APP_VERSION` from the tag (so `--version` matches what people downloaded),
+downloads `libopus-0.dll` and `ffmpeg.exe` into `vendor/`, runs PyInstaller,
+smoke-tests the binary, then uploads.
 
-You can also trigger it by hand from the Actions tab (`workflow_dispatch`) —
-useful for testing the build without cutting a release.
+You can also trigger it from the **Actions** tab without cutting a release
+(`workflow_dispatch`); it uploads a build artifact instead of attaching to a
+release.
+
+FFmpeg and Opus are bundled, so a machine with no Python, no FFmpeg and no Opus
+can run the result. A frozen build stores its data next to the `.exe` rather than
+in the working directory.
 
 Locally:
 
 ```bash
 pip install pyinstaller
-pyinstaller packaging/dnd_music_manager.spec --noconfirm --clean
+python build.py              # -> dist/DnDMusicManager.exe
+python build.py --console    # keeps a console window, so you can read the log
+python build.py --dry-run    # print the PyInstaller command without building
 ```
 
-Anything you drop into `vendor/` gets bundled next to the binary, so a machine
-with no Python, no FFmpeg and no opus can still run it. A frozen build stores
-its data next to the `.exe` rather than in the working directory.
+`build.py` is what the workflow runs too, so a CI build and a desk build can't
+drift apart. It bundles whatever is in `vendor/`, adds the hidden imports
+PyInstaller can't infer (`PyQt6.QtMultimedia` for local playback, disnake's
+submodules), and drops tkinter/PyQt5/PySide6 to keep the binary smaller.
 
-`console=False` in the spec hides the terminal. Flip it to `True` while
-debugging a build — the startup banner and every debug line go to stdout.
+Use `--console` when an .exe won't start: the startup banner and every debug
+line go to stdout instead of vanishing.
 
 ---
 
@@ -369,6 +380,13 @@ Every file starts with a comment naming its own path:
 
 So a file taken out of context can always be put back where it belongs. Markdown
 uses an HTML comment, YAML and Python a `#`.
+
+## Security
+
+Your token is never in source, `.env` is git-ignored and not in the release
+archive, FFmpeg is never invoked through a shell, and `!debug` is limited to the
+bot owner or a server manager. `docs/SECURITY.md` covers the full review,
+including the two things that are opt-in on purpose.
 
 ## Verifying a checkout
 

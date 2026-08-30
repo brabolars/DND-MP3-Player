@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Iterable, Optional, Union
 
 APP_NAME = "D&D Music Manager"
-APP_VERSION = "3.0.0"
+APP_VERSION = "4.1.0"
 COMMAND_PREFIX = "!"
 
 AUDIO_FILE_FILTER = "Audio (*.mp3 *.wav *.ogg *.m4a)"
