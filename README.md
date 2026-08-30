@@ -295,6 +295,11 @@ The build runs on `windows-latest`: installs the dependencies, stamps
 downloads `libopus-0.dll` and `ffmpeg.exe` into `vendor/`, runs PyInstaller,
 smoke-tests the binary, then uploads.
 
+If the upload step fails with *"Resource not accessible by integration"*, the
+workflow lacks write access to the release. `build.yml` declares
+`permissions: contents: write`, which covers it; if a repository is locked down
+further, check **Settings → Actions → General → Workflow permissions**.
+
 You can also trigger it from the **Actions** tab without cutting a release
 (`workflow_dispatch`); it uploads a build artifact instead of attaching to a
 release.
