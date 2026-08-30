@@ -1,0 +1,31 @@
+# .gitignore
+# secrets
+.env
+
+# runtime data
+music_files/
+sound_effects/
+ambient_sounds/
+playlists/
+temp_mixes/
+music_data.json
+custom_categories.json
+custom_themes.json
+mixer_settings.json
+libopus-0.dll
+ffmpeg.exe
+vendor/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# build
+build/
+dist/
+*.spec.bak

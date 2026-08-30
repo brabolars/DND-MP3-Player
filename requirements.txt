@@ -1,0 +1,8 @@
+# requirements.txt
+disnake[voice]>=2.9
+dave.py>=0.1.0
+PyQt6>=6.6
+numpy>=1.26
+requests>=2.31
+python-dotenv>=1.0
+certifi>=2024.2.2

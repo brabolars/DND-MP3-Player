@@ -1,0 +1,67 @@
+# .github/workflows/build.yml
+name: Build Windows EXE
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Fetch native dependencies (opus + ffmpeg)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path vendor | Out-Null
+
+          # libopus — required for voice output
+          Invoke-WebRequest -Uri "https://github.com/xiph/opus/releases/download/v1.5.2/opus-1.5.2-win-x64.zip" -OutFile opus.zip
+          Expand-Archive opus.zip -DestinationPath opus_tmp -Force
+          $dll = Get-ChildItem -Recurse opus_tmp -Filter "*opus*.dll" | Select-Object -First 1
+          if ($dll) { Copy-Item $dll.FullName vendor/libopus-0.dll }
+
+          # ffmpeg — required for decoding and mixing
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp -Force
+          $exe = Get-ChildItem -Recurse ffmpeg_tmp -Filter "ffmpeg.exe" | Select-Object -First 1
+          if ($exe) { Copy-Item $exe.FullName vendor/ffmpeg.exe }
+
+          Get-ChildItem vendor
+
+      - name: Build
+        run: pyinstaller packaging/dnd_music_manager.spec --noconfirm --clean
+
+      - name: Smoke test the executable
+        continue-on-error: true
+        run: dist/DnDMusicManager.exe --version
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DnDMusicManager-windows
+          path: dist/DnDMusicManager.exe
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/DnDMusicManager.exe
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
