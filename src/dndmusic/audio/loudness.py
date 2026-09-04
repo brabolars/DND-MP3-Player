@@ -90,14 +90,16 @@ class Loudness:
             return None
 
 
-def measure(path: str, executable: str = "ffmpeg", timeout: int = 120) -> Optional[Loudness]:
+def measure(path: str, executable: Optional[str] = None, timeout: int = 120) -> Optional[Loudness]:
     """Analyse a file with FFmpeg's loudnorm filter.  None if it fails.
 
     Decoding runs far faster than realtime, but this still blocks — call it off
     the UI and audio threads.
     """
+    from .ffmpeg import executable as default_executable
+
     command = [
-        executable, "-hide_banner", "-nostats",
+        executable or default_executable(), "-hide_banner", "-nostats",
         "-i", path,
         "-af", "loudnorm=print_format=json",
         "-f", "null", "-",

@@ -10,12 +10,54 @@ from typing import Iterable, List
 from ..config import APP_NAME, APP_VERSION
 
 
+#: Session logs to keep before the oldest are deleted.
+MAX_LOG_FILES = 10
+
+
 class DebugLogger:
-    def __init__(self, max_entries: int = 500) -> None:
+    def __init__(self, max_entries: int = 500, to_file: bool = True) -> None:
         self.messages: List[str] = []
         self.session_start = datetime.now()
         self._max = max_entries
+        self._file = None
+        if to_file:
+            self._open_log_file()
         self.log("=== SESSION STARTED ===", "SYS")
+
+    # ── file output ──────────────────────────────────────────────────────
+
+    def _open_log_file(self) -> None:
+        """Mirror everything to logs/.  Never fatal if it can't be opened."""
+        from ..config import paths
+
+        try:
+            paths.logs.mkdir(parents=True, exist_ok=True)
+            self._prune_old_logs(paths.logs)
+            target = paths.logs / f"session-{self.session_start:%Y%m%d-%H%M%S}.log"
+            self._file = target.open("a", encoding="utf-8", buffering=1)
+        except Exception:
+            self._file = None
+
+    @staticmethod
+    def _prune_old_logs(directory) -> None:
+        try:
+            existing = sorted(directory.glob("session-*.log"))
+            for stale in existing[: max(0, len(existing) - MAX_LOG_FILES + 1)]:
+                stale.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    @property
+    def log_file(self):
+        return getattr(self._file, "name", None)
+
+    def close(self) -> None:
+        if self._file is not None:
+            try:
+                self._file.close()
+            except Exception:
+                pass
+            self._file = None
 
     def log(self, message: str, category: str = "GEN") -> None:
         line = f"[{datetime.now():%H:%M:%S}][{category}] {message}"
@@ -23,6 +65,11 @@ class DebugLogger:
         if len(self.messages) > self._max:
             self.messages.pop(0)
         print(line)
+        if self._file is not None:
+            try:
+                self._file.write(self.redact(line) + "\n")
+            except Exception:
+                self._file = None
 
     def log_environment(self, lines: Iterable[str]) -> None:
         for line in lines:

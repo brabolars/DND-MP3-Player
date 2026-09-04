@@ -292,8 +292,19 @@ Windows. The banner printed at startup tells you if either is missing.
 
 The build runs on `windows-latest`: installs the dependencies, stamps
 `APP_VERSION` from the tag (so `--version` matches what people downloaded),
-downloads `libopus-0.dll` and `ffmpeg.exe` into `vendor/`, runs PyInstaller,
-smoke-tests the binary, then uploads.
+gathers the native dependencies into `vendor/`, runs PyInstaller, smoke-tests
+the binary, then uploads.
+
+Where the native pieces come from, and why:
+
+| Dependency | Source |
+|---|---|
+| FFmpeg | [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) `latest` tag — the usual source for Windows FFmpeg binaries, and a stable URL |
+| libopus | **copied out of the installed disnake package**, which ships `libopus-0.x64.dll` — no download at all |
+
+Every one of those steps fails the build if its file is missing. An .exe without
+FFmpeg cannot decode anything and one without Opus is silent, so a build that
+lost them is worse than no build.
 
 If the upload step fails with *"Resource not accessible by integration"*, the
 workflow lacks write access to the release. `build.yml` declares
@@ -394,20 +405,58 @@ disnake encrypts the voice stream with PyNaCl and imports it lazily, so a
 missing PyNaCl only shows up when someone runs `!join` — the bot otherwise looks
 perfectly healthy.
 
-The startup banner now reports it directly:
+Since the packaged app runs windowed and has no console, two things now make
+this visible without one:
 
-```
-  Opus: OK
-  PyNaCl: OK
-```
+- **A red "Missing:" panel** at the top of Bot Status naming what is absent.
+- **A log file** at `logs/session-<date>.log` beside the app, with local paths
+  redacted, so it is safe to send to whoever built it. The last 10 sessions are
+  kept.
 
-If that line says `MISSING — voice will fail`:
+If PyNaCl is reported missing:
 
 - **running from source:** `pip install -r requirements.txt` (PyNaCl is listed
   explicitly, so this cannot silently skip it)
 - **running the .exe:** it was built without PyNaCl bundled. `build.py` passes
   `--collect-all nacl`, which includes the compiled `_sodium` extension as well
-  as the Python modules, so a current build has it.
+  as the Python modules — so make sure the .exe came from a release built
+  *after* that change, not an earlier one.
+
+### FFmpeg: bundled, discovered, or chosen by hand
+
+Three layers, so a missing FFmpeg is recoverable without a reinstall:
+
+1. **Bundled.** The release .exe carries `ffmpeg.exe`, and the bundle directory
+   is prepended to `PATH` at startup so it is found.
+2. **Discovered.** If that fails, startup scans `PATH` and the usual install
+   locations (`C:\ffmpeg\bin`, winget's shim, the working directory) and saves
+   whatever it finds.
+3. **Chosen.** If both fail, a **Locate ffmpeg.exe…** button appears under the
+   warning in Bot Status. Pick the binary and it is validated (it must answer to
+   `-version`) before being saved to `mixer_settings.json`.
+
+So "just install FFmpeg and point at it" is a valid fallback rather than the
+only option. Every part of the app that shells out — playback, loudness
+measurement — goes through one `executable()` function, so the setting applies
+everywhere.
+
+### "FFmpeg: MISSING" in a packaged build
+
+Two causes, and the log tells them apart. If Opus and PyNaCl are missing too,
+the build simply didn't include them — check the Actions log for the
+*Fetch native dependencies* step (it now fails the build rather than shipping a
+broken .exe) and for `--collect-all nacl` in the build command.
+
+If only FFmpeg is missing, it was bundled but not findable: `--add-binary`
+extracts to a temp folder that is not on `PATH`. `add_bundle_to_path()` prepends
+it at startup, so a build after that fix finds its own copy.
+
+### Diagnosing someone else's copy
+
+Ask for `logs/session-*.log` from beside their .exe. The first few lines list
+FFmpeg, disnake, Opus and PyNaCl, which settles most "it doesn't work" reports
+immediately. For anything deeper, `python build.py --console` produces a build
+that keeps a console window open.
 
 ## Security
 

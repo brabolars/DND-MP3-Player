@@ -14,6 +14,7 @@ import subprocess
 import threading
 from typing import Callable, Optional, Protocol, Sequence
 
+from .ffmpeg import executable as ffmpeg_executable
 from .pcm import FFMPEG_OUTPUT_ARGS, FRAME_BYTES, SILENCE, pad_frame
 
 DEFAULT_PREBUFFER_FRAMES = 25   # 0.5 s
@@ -51,7 +52,7 @@ class FFmpegPcmStream:
         *,
         loop: bool = False,
         start_at: float = 0.0,
-        executable: str = "ffmpeg",
+        executable: Optional[str] = None,
         queue_frames: int = DEFAULT_QUEUE_FRAMES,
         input_options: Sequence[str] = (),
     ) -> None:
@@ -64,7 +65,7 @@ class FFmpegPcmStream:
         self.underruns = 0
         self.frames_read = 0
 
-        command = [executable, "-hide_banner", "-loglevel", "error"]
+        command = [executable or ffmpeg_executable(), "-hide_banner", "-loglevel", "error"]
         command += list(input_options)
         if loop:
             command += ["-stream_loop", "-1"]

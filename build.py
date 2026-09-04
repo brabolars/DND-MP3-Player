@@ -52,7 +52,11 @@ EXCLUDES = ["tkinter", "matplotlib", "PyQt5", "PySide6"]
 #:
 #: --collect-all rather than --hidden-import, because both ship compiled
 #: extensions (PyNaCl's _sodium) that have to be bundled as well.
-COLLECT_ALL = ["nacl", "dave"]
+#: "disnake" is here as well as in HIDDEN_IMPORTS because --collect-all also
+#: takes package *data and binaries* — disnake ships libopus-0.x64.dll in its
+#: own bin/ folder, which is where audio/opus.py finds it first.  That is a
+#: second, download-free route to working voice audio.
+COLLECT_ALL = ["nacl", "dave", "disnake"]
 
 
 def bundled_binaries() -> list[str]:

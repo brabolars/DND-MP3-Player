@@ -45,25 +45,52 @@ jobs:
             Set-Content $file
           Select-String -Path $file -Pattern 'APP_VERSION'
 
-      - name: Fetch native dependencies (opus + ffmpeg)
-        continue-on-error: true
+      - name: Fetch FFmpeg
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path vendor | Out-Null
 
-          # libopus — required for voice output
-          Invoke-WebRequest -Uri "https://github.com/xiph/opus/releases/download/v1.5.2/opus-1.5.2-win-x64.zip" -OutFile opus.zip
-          Expand-Archive opus.zip -DestinationPath opus_tmp -Force
-          $dll = Get-ChildItem -Recurse opus_tmp -Filter "*opus*.dll" | Select-Object -First 1
-          if ($dll) { Copy-Item $dll.FullName vendor/libopus-0.dll }
-
-          # ffmpeg — required for decoding, mixing and loudness measurement
-          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
+          # BtbN's builds are the usual source for Windows FFmpeg binaries and
+          # the "latest" tag is a stable pointer, so this URL does not rot.
+          # (The xiph/opus releases have no Windows DLL at all — that download
+          # 404'd silently for every build before this.)
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
           Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp -Force
           $exe = Get-ChildItem -Recurse ffmpeg_tmp -Filter "ffmpeg.exe" | Select-Object -First 1
-          if ($exe) { Copy-Item $exe.FullName vendor/ffmpeg.exe }
+          if (-not $exe) { throw "ffmpeg.exe not found in the archive" }
+          Copy-Item $exe.FullName vendor/ffmpeg.exe
 
-          Get-ChildItem vendor
+      - name: Locate libopus (shipped inside disnake)
+        shell: pwsh
+        run: |
+          # disnake bundles libopus in its own package, so there is nothing to
+          # download.  Copying it into vendor/ puts it beside the .exe at
+          # runtime, where audio/opus.py already looks for it.
+          $dll = python -c "import disnake, pathlib; print(pathlib.Path(disnake.__file__).parent / 'bin' / 'libopus-0.x64.dll')"
+          Write-Host "disnake ships: $dll"
+          if (-not (Test-Path $dll)) { throw "libopus-0.x64.dll not found inside disnake" }
+          Copy-Item $dll vendor/libopus-0.dll
+
+      - name: Confirm both native dependencies are present
+        shell: pwsh
+        run: |
+          Get-ChildItem vendor | Format-Table Name, Length
+          # An .exe without these cannot decode audio or join voice.  Failing
+          # here beats shipping one that looks fine and isn't.
+          if (-not (Test-Path vendor/ffmpeg.exe)) { throw "vendor/ffmpeg.exe missing" }
+          if (-not (Test-Path vendor/libopus-0.dll)) { throw "vendor/libopus-0.dll missing" }
+
+      - name: Verify the build includes its native and lazy dependencies
+        shell: pwsh
+        run: |
+          python -c "import nacl.secret; print('PyNaCl importable:', True)"
+          $command = python build.py --dry-run
+          $command
+          if ($command -notmatch '--collect-all nacl') {
+            throw "build.py is missing --collect-all nacl; PyNaCl will not be bundled"
+          }
 
       - name: Build
         # Same script you run locally, so a CI build and a desk build cannot drift.

@@ -46,6 +46,7 @@ class ControlPanel(QWidget):
     ceiling_changed = pyqtSignal(float)
     allow_boost_toggled = pyqtSignal(bool)
     trim_changed = pyqtSignal(float)
+    locate_ffmpeg_requested = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -119,11 +120,41 @@ class ControlPanel(QWidget):
     def _build_status(self) -> QGroupBox:
         group = QGroupBox("Bot Status")
         layout = QVBoxLayout(group)
+
+        self.warning_label = QLabel()
+        self.warning_label.setWordWrap(True)
+        self.warning_label.setStyleSheet(
+            "padding: 8px; font-weight: bold; color: #ffd7d7;"
+            "background: rgba(200,40,40,0.35); border-radius: 4px;"
+        )
+        self.warning_label.setVisible(False)
+        layout.addWidget(self.warning_label)
+
+        # Only shown when FFmpeg is actually missing, so it isn't clutter.
+        self.locate_button = QPushButton("Locate ffmpeg.exe…")
+        self.locate_button.setToolTip(
+            "Point the app at an FFmpeg you already have.\n"
+            "Normally unnecessary — a copy is bundled — but this covers a build\n"
+            "that lost it, running from source, or an unusual install location."
+        )
+        self.locate_button.clicked.connect(self.locate_ffmpeg_requested.emit)
+        self.locate_button.setVisible(False)
+        layout.addWidget(self.locate_button)
+
         self.status_label = QLabel("Starting...")
         self.status_label.setStyleSheet("padding: 8px; font-weight: bold;")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
         return group
+
+    def set_warning(self, lines) -> None:
+        """Show missing dependencies where they cannot be missed."""
+        self.locate_button.setVisible(any("FFmpeg" in line for line in lines))
+        if not lines:
+            self.warning_label.setVisible(False)
+            return
+        self.warning_label.setText("Missing:\n• " + "\n• ".join(lines))
+        self.warning_label.setVisible(True)
 
     def _build_now_playing(self) -> QGroupBox:
         group = QGroupBox("Now Playing")

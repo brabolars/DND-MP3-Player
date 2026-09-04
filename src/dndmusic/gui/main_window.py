@@ -27,12 +27,15 @@ from PyQt6.QtWidgets import (
 from ..bot.auth import resolve_token
 from ..bot.client import BotContext, BotRunner
 from ..config import APP_NAME, APP_VERSION, paths
+from ..audio.ffmpeg import ffmpeg_status
+from ..audio.ffmpeg import looks_like_ffmpeg as ffmpeg_looks_right
+from ..audio.ffmpeg import set_executable as set_ffmpeg_executable
 from ..core.importer import import_folder, import_legacy_library
 from ..core.library import LibraryError
 from ..core.models import MediaKind, MusicTrack, OutputMode, PlaybackMode
 from ..core.playlist import load_playlist, save_playlist
 from ..discord_api import DISCORD_AVAILABLE, INSTALL_HINT
-from ..services import Services
+from ..services import Services, missing_requirements
 from .bridge import EngineBridge
 from .dialogs.prompts import ask_text, choose_category, confirm, inform, pick_audio_files, warn
 from .dialogs.token_setup import show_token_setup_dialog
@@ -95,6 +98,8 @@ class MainWindow(QMainWindow):
         self._install_disk_watcher()
         self._install_mixer_poll()
         self._install_settings_saver()
+
+        self._report_missing_requirements()
 
         if services.discord_enabled:
             QTimer.singleShot(BOT_START_DELAY_MS, self.start_bot)
@@ -324,6 +329,7 @@ class MainWindow(QMainWindow):
         controls.ceiling_changed.connect(self.engine.set_ceiling_dbtp)
         controls.allow_boost_toggled.connect(self.engine.set_allow_boost)
         controls.trim_changed.connect(self.engine.set_trim_db)
+        controls.locate_ffmpeg_requested.connect(self._on_locate_ffmpeg)
         for signal in (
             controls.music_volume_changed,
             controls.master_volume_changed,
@@ -354,6 +360,59 @@ class MainWindow(QMainWindow):
     # ═════════════════════════════════════════════════════════════════════
     #  Live disk watching
     # ═════════════════════════════════════════════════════════════════════
+
+    def _on_locate_ffmpeg(self) -> None:
+        """Let someone point at an FFmpeg they already have.
+
+        Validated before saving — a wrong file here would fail later with a
+        confusing decode error rather than an obvious one.
+        """
+        chosen, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select ffmpeg.exe",
+            "",
+            "FFmpeg (ffmpeg.exe ffmpeg);;All files (*)",
+        )
+        if not chosen:
+            return
+
+        if not ffmpeg_looks_right(chosen):
+            warn(
+                self,
+                "Not FFmpeg",
+                f"{Path(chosen).name} does not respond like FFmpeg.\n\n"
+                "Pick ffmpeg.exe itself — usually in a bin folder.",
+            )
+            return
+
+        set_ffmpeg_executable(chosen)
+        self.engine.settings.ffmpeg_path = chosen
+        self.engine.save_settings()
+        status = ffmpeg_status(refresh=True)
+        self.services.ffmpeg = status
+        self.debug.log(f"FFmpeg set to {chosen}", "SYS")
+        self._report_missing_requirements()
+        inform(
+            self,
+            "FFmpeg",
+            f"Using {Path(chosen).name}.\n\n{status.version or 'Ready.'}",
+        )
+
+    def _report_missing_requirements(self) -> None:
+        """Put missing dependencies in the window, not just in a console.
+
+        The packaged app runs windowed, so stdout goes nowhere — without this a
+        missing PyNaCl looks like "the bot just doesn't work".
+        """
+        missing = missing_requirements(self.services.ffmpeg, self.services.discord_enabled)
+        self.controls.set_warning(missing)
+        if not missing:
+            return
+        for item in missing:
+            self.debug.log(f"MISSING: {item}", "ERR")
+        log_file = self.debug.log_file
+        if log_file:
+            self.debug.log(f"This session is being logged to {log_file}", "SYS")
 
     def _restore_layout(self) -> None:
         """Put the window and panels back where they were left.

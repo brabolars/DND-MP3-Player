@@ -96,6 +96,10 @@ class PlaybackSettings:
     output_mode: str = OutputMode.DISCORD.value
     #: Local output device by name; empty follows the system default.
     output_device: str = ""
+    #: Explicit path to ffmpeg.exe.  Empty means "use PATH", which finds the
+    #: bundled copy.  This is the escape hatch when bundling fails or someone
+    #: has FFmpeg installed somewhere unusual.
+    ffmpeg_path: str = ""
     #: Manual +/- dB nudge applied after everything else.  An escape hatch for
     #: "the target is right in principle but this room/rig needs a bit more".
     trim_db: float = 0.0
@@ -133,6 +137,7 @@ class PlaybackSettings:
             "output_mode": self.output_mode,
             "output_device": self.output_device,
             "trim_db": self.trim_db,
+            "ffmpeg_path": self.ffmpeg_path,
         }
 
     @classmethod

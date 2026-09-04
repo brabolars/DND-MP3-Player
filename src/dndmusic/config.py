@@ -78,13 +78,19 @@ class Paths:
         return self.root / "ui_state.json"
 
     @property
+    def logs(self) -> Path:
+        """Session logs.  A windowed .exe has no console, so this is the only
+        way to see what happened on someone else's machine."""
+        return self.root / "logs"
+
+    @property
     def backgrounds(self) -> Path:
         """Images the user has picked as theme backgrounds."""
         return self.root / "backgrounds"
 
     def directories(self) -> list[Path]:
         return [self.music, self.sfx, self.ambient, self.playlists, self.temp_mixes,
-                self.backgrounds]
+                self.backgrounds, self.logs]
 
 
 #: Module-level singleton.  Mutated in place by :func:`init_data_root` so that
@@ -102,6 +108,24 @@ def bundle_dir() -> Path:
     if meipass:
         return Path(meipass)
     return Path(__file__).resolve().parent
+
+
+def add_bundle_to_path() -> bool:
+    """Put the PyInstaller bundle directory on PATH.
+
+    ``--add-binary`` extracts bundled files to a temp folder (``sys._MEIPASS``)
+    that is neither on PATH nor beside the .exe, so ``subprocess.run(["ffmpeg",
+    ...])`` cannot find a bundled ffmpeg.exe.  Prepending the bundle directory
+    fixes that, and is a no-op when running from source.
+    """
+    if not is_frozen():
+        return False
+    directory = str(bundle_dir())
+    current = os.environ.get("PATH", "")
+    if directory in current.split(os.pathsep):
+        return True
+    os.environ["PATH"] = directory + os.pathsep + current
+    return True
 
 
 def init_data_root(root: Optional[Union[str, os.PathLike]] = None) -> Path:

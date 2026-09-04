@@ -8,6 +8,7 @@ sound_effects/
 ambient_sounds/
 playlists/
 temp_mixes/
+logs/
 music_data.json
 custom_categories.json
 custom_themes.json
