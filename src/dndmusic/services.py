@@ -106,7 +106,10 @@ def build_services(args: AppArgs) -> Services:
             settings.save()
             ffmpeg = ffmpeg_status(refresh=True)
     if DISCORD_AVAILABLE:
-        ensure_opus(lambda message: debug.log(message, "OPUS"))
+        ensure_opus(
+            lambda message: debug.log(message, "OPUS"),
+            preferred=settings.opus_path or None,
+        )
     debug.log_environment(environment_report(ffmpeg))
 
     library = MediaLibrary(debug)

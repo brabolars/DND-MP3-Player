@@ -100,6 +100,9 @@ class PlaybackSettings:
     #: bundled copy.  This is the escape hatch when bundling fails or someone
     #: has FFmpeg installed somewhere unusual.
     ffmpeg_path: str = ""
+    #: Explicit path to libopus-0.dll.  Empty means "use the search order",
+    #: which normally finds the copy disnake ships.
+    opus_path: str = ""
     #: Manual +/- dB nudge applied after everything else.  An escape hatch for
     #: "the target is right in principle but this room/rig needs a bit more".
     trim_db: float = 0.0
@@ -138,6 +141,7 @@ class PlaybackSettings:
             "output_device": self.output_device,
             "trim_db": self.trim_db,
             "ffmpeg_path": self.ffmpeg_path,
+            "opus_path": self.opus_path,
         }
 
     @classmethod

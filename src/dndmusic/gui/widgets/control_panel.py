@@ -47,6 +47,7 @@ class ControlPanel(QWidget):
     allow_boost_toggled = pyqtSignal(bool)
     trim_changed = pyqtSignal(float)
     locate_ffmpeg_requested = pyqtSignal()
+    locate_opus_requested = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -141,6 +142,16 @@ class ControlPanel(QWidget):
         self.locate_button.setVisible(False)
         layout.addWidget(self.locate_button)
 
+        self.locate_opus_button = QPushButton("Locate libopus-0.dll…")
+        self.locate_opus_button.setToolTip(
+            "Point the app at a libopus DLL.\n"
+            "Normally unnecessary — disnake ships one — but this covers a build\n"
+            "that lost it."
+        )
+        self.locate_opus_button.clicked.connect(self.locate_opus_requested.emit)
+        self.locate_opus_button.setVisible(False)
+        layout.addWidget(self.locate_opus_button)
+
         self.status_label = QLabel("Starting...")
         self.status_label.setStyleSheet("padding: 8px; font-weight: bold;")
         self.status_label.setWordWrap(True)
@@ -150,6 +161,7 @@ class ControlPanel(QWidget):
     def set_warning(self, lines) -> None:
         """Show missing dependencies where they cannot be missed."""
         self.locate_button.setVisible(any("FFmpeg" in line for line in lines))
+        self.locate_opus_button.setVisible(any("Opus" in line for line in lines))
         if not lines:
             self.warning_label.setVisible(False)
             return

@@ -69,22 +69,34 @@ def test_debug_tail_is_redacted_too(data_root):
     assert str(paths.root) not in log.last(5)
 
 
-# ── the opus download executes code, so it must be opt-in ───────────────────
+# ── opus is loaded as a library, so its source matters ──────────────────────
 
-def test_opus_download_is_off_by_default(monkeypatch):
+def test_there_is_no_opus_download():
+    """An earlier version fetched a DLL and loaded it — code execution with no
+    signature to verify.  It also pointed at a URL that 404s, so it promised a
+    recovery it could never perform.  Both reasons to have removed it."""
     from dndmusic.audio import opus
 
-    monkeypatch.delenv("DND_ALLOW_OPUS_DOWNLOAD", raising=False)
-    assert opus.download_allowed() is False
-
-    monkeypatch.setenv("DND_ALLOW_OPUS_DOWNLOAD", "1")
-    assert opus.download_allowed() is True
+    assert not hasattr(opus, "download_opus")
+    assert not hasattr(opus, "OPUS_DOWNLOAD_URL")
 
 
-def test_opus_download_url_is_https():
-    from dndmusic.audio.opus import OPUS_DOWNLOAD_URL
+def test_opus_is_searched_for_in_predictable_places(data_root):
+    from dndmusic.audio import opus
 
-    assert OPUS_DOWNLOAD_URL.startswith("https://")
+    opus.set_library(None)
+    paths = [str(p) for p in opus._candidate_paths()]
+    assert any("libopus" in p for p in paths)
+    # A configured path must be tried first.
+    opus.set_library("/tmp/chosen/libopus-0.dll")
+    assert str(opus._candidate_paths()[0]) == "/tmp/chosen/libopus-0.dll"
+    opus.set_library(None)
+
+
+def test_opus_validation_rejects_a_missing_file():
+    from dndmusic.audio import opus
+
+    assert opus.looks_like_opus("/no/such/libopus-0.dll") is False
 
 
 # ── ffmpeg is never invoked through a shell ─────────────────────────────────

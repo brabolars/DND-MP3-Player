@@ -55,14 +55,14 @@ cannot traverse out of the library.
 | What | When | Notes |
 |---|---|---|
 | Discord API | always | via disnake, HTTPS |
-| Opus DLL download | **opt-in only** | see below |
+| ~~Opus DLL download~~ | **removed** | see below |
 | Auth server | only if `AUTH_SERVER_URL` is set | posts a hashed machine fingerprint and `APP_SECRET` |
 
-The Opus download fetches a DLL and loads it, which is code execution. There is
-no signature to verify it against, so it is **off by default** — set
-`DND_ALLOW_OPUS_DOWNLOAD=1` to enable. It is rarely needed: disnake ships libopus
-in its own package, which is where it is normally found. When enabled it refuses
-non-HTTPS URLs and checks the file is actually a DLL before loading it.
+The Opus download has been **removed entirely**. Fetching a DLL and loading it
+is code execution with no signature to verify against — and the URL it used
+(xiph's GitHub releases) contains source only and returns 404, so it could never
+have worked anyway. libopus comes from the installed disnake package instead, or
+from a file the user picks explicitly.
 
 The same reasoning applies to `build.yml`, which downloads FFmpeg and Opus while
 building the release binary. If you publish that `.exe` for others, you are

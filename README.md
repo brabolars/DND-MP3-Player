@@ -422,6 +422,32 @@ If PyNaCl is reported missing:
   as the Python modules — so make sure the .exe came from a release built
   *after* that change, not an earlier one.
 
+### Opus: a library, not a program
+
+Opus works differently from FFmpeg and it is worth knowing which you are
+debugging. FFmpeg is a **program** this app runs as a subprocess, found via
+`PATH`. Opus is a **library** that disnake loads into the process with ctypes —
+no PATH, no subprocess, just a specific file handed to `load_opus()`. Without it
+disnake refuses to open a voice connection and the bot is silent.
+
+It is normally a non-issue, because **disnake ships libopus itself**
+(`disnake/bin/libopus-0.x64.dll`). The search order is:
+
+1. an explicitly configured path (see below)
+2. disnake's own bundled copy — the usual answer
+3. `libopus-0.dll` beside the .exe, in `vendor/`, or in the working directory
+4. system library names, then ctypes' library finder
+
+If all of that fails, a **Locate libopus-0.dll…** button appears next to the
+FFmpeg one. Because Opus is loaded rather than executed, choosing a file takes
+effect immediately — disnake only needs it before a voice connection, not before
+startup.
+
+There is deliberately **no automatic download**. An earlier version tried to
+fetch a DLL from the xiph GitHub releases; those contain source only, so the URL
+404s and the "recovery" never worked. Downloading a library and loading it is
+also code execution with nothing to verify it against.
+
 ### FFmpeg: bundled, discovered, or chosen by hand
 
 Three layers, so a missing FFmpeg is recoverable without a reinstall:

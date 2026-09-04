@@ -28,6 +28,8 @@ from ..bot.auth import resolve_token
 from ..bot.client import BotContext, BotRunner
 from ..config import APP_NAME, APP_VERSION, paths
 from ..audio.ffmpeg import ffmpeg_status
+from ..audio.opus import ensure_opus
+from ..audio.opus import looks_like_opus as opus_looks_right
 from ..audio.ffmpeg import looks_like_ffmpeg as ffmpeg_looks_right
 from ..audio.ffmpeg import set_executable as set_ffmpeg_executable
 from ..core.importer import import_folder, import_legacy_library
@@ -330,6 +332,7 @@ class MainWindow(QMainWindow):
         controls.allow_boost_toggled.connect(self.engine.set_allow_boost)
         controls.trim_changed.connect(self.engine.set_trim_db)
         controls.locate_ffmpeg_requested.connect(self._on_locate_ffmpeg)
+        controls.locate_opus_requested.connect(self._on_locate_opus)
         for signal in (
             controls.music_volume_changed,
             controls.master_volume_changed,
@@ -397,6 +400,35 @@ class MainWindow(QMainWindow):
             "FFmpeg",
             f"Using {Path(chosen).name}.\n\n{status.version or 'Ready.'}",
         )
+
+    def _on_locate_opus(self) -> None:
+        """Point Opus at a specific DLL.
+
+        Opus is loaded into the process rather than executed, so this can be
+        applied immediately — disnake only needs it loaded before a voice
+        connection, not before startup.
+        """
+        chosen, _ = QFileDialog.getOpenFileName(
+            self, "Select libopus-0.dll", "", "Opus library (*.dll *.so *.dylib);;All files (*)"
+        )
+        if not chosen:
+            return
+
+        if not opus_looks_right(chosen):
+            warn(
+                self,
+                "Not libopus",
+                f"{Path(chosen).name} could not be loaded as libopus.\n\n"
+                "It should be a libopus DLL — disnake ships one in its bin folder.",
+            )
+            return
+
+        self.engine.settings.opus_path = chosen
+        self.engine.save_settings()
+        loaded = ensure_opus(lambda message: self.debug.log(message, "OPUS"), preferred=chosen)
+        self.debug.log(f"Opus set to {chosen} (loaded={loaded})", "SYS")
+        self._report_missing_requirements()
+        inform(self, "Opus", f"Using {Path(chosen).name}." if loaded else "Could not load it.")
 
     def _report_missing_requirements(self) -> None:
         """Put missing dependencies in the window, not just in a console.
