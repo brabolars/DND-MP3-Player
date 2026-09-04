@@ -386,6 +386,29 @@ Every file starts with a comment naming its own path:
 So a file taken out of context can always be put back where it belongs. Markdown
 uses an HTML comment, YAML and Python a `#`.
 
+## Troubleshooting the bot
+
+### "PyNaCl library needed in order to use voice"
+
+disnake encrypts the voice stream with PyNaCl and imports it lazily, so a
+missing PyNaCl only shows up when someone runs `!join` — the bot otherwise looks
+perfectly healthy.
+
+The startup banner now reports it directly:
+
+```
+  Opus: OK
+  PyNaCl: OK
+```
+
+If that line says `MISSING — voice will fail`:
+
+- **running from source:** `pip install -r requirements.txt` (PyNaCl is listed
+  explicitly, so this cannot silently skip it)
+- **running the .exe:** it was built without PyNaCl bundled. `build.py` passes
+  `--collect-all nacl`, which includes the compiled `_sodium` extension as well
+  as the Python modules, so a current build has it.
+
 ## Security
 
 Your token is never in source, `.env` is git-ignored and not in the release

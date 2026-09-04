@@ -28,4 +28,6 @@ venv/
 # build
 build/
 dist/
+# PyInstaller writes this next to build.py on every run
+DnDMusicManager.spec
 *.spec.bak

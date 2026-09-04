@@ -43,6 +43,17 @@ HIDDEN_IMPORTS = [
 
 EXCLUDES = ["tkinter", "matplotlib", "PyQt5", "PySide6"]
 
+#: Packages disnake imports inside a try/except, so PyInstaller's static
+#: analysis never sees them and silently leaves them out.  The symptom is an
+#: .exe that works until the moment it matters:
+#:
+#:   nacl -> "PyNaCl library needed in order to use voice" when someone !joins
+#:   dave -> end-to-end encrypted voice unavailable
+#:
+#: --collect-all rather than --hidden-import, because both ship compiled
+#: extensions (PyNaCl's _sodium) that have to be bundled as well.
+COLLECT_ALL = ["nacl", "dave"]
+
 
 def bundled_binaries() -> list[str]:
     """--add-binary arguments for everything in vendor/, if anything."""
@@ -77,6 +88,8 @@ def build_command(console: bool) -> list[str]:
         command += ["--hidden-import", module]
     for module in EXCLUDES:
         command += ["--exclude-module", module]
+    for package in COLLECT_ALL:
+        command += ["--collect-all", package]
     command += bundled_binaries()
     if ICON.exists():
         command += ["--icon", str(ICON)]

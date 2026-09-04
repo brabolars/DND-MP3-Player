@@ -39,3 +39,17 @@ def require_disnake() -> None:
 
 def opus_loaded() -> bool:
     return bool(DISCORD_AVAILABLE and disnake.opus.is_loaded())
+
+
+def voice_encryption_available() -> bool:
+    """PyNaCl, which disnake needs to encrypt the voice stream.
+
+    disnake imports it lazily, so a missing PyNaCl only shows up when someone
+    runs !join.  Reporting it at startup turns a confusing runtime error into a
+    line in the banner.
+    """
+    try:
+        import nacl.secret  # noqa: F401
+    except Exception:
+        return False
+    return True

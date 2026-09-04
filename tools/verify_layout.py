@@ -36,7 +36,9 @@ IGNORED_PARTS = {
 }
 IGNORED_NAMES = {
     ".env", "music_data.json", "custom_themes.json", "custom_categories.json",
-    "mixer_settings.json", "manifest.txt", "manifest.json",
+    "mixer_settings.json", "ui_state.json", "manifest.txt", "manifest.json",
+    # PyInstaller regenerates this beside build.py on every run.
+    "DnDMusicManager.spec",
 }
 
 

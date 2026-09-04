@@ -1,5 +1,8 @@
 # requirements.txt
 disnake[voice]>=2.9
+# Voice encryption.  Comes in via disnake's [voice] extra, but named explicitly
+# so an install without the extra fails at install time, not at !join.
+PyNaCl>=1.5,<1.7
 dave.py>=0.1.0
 PyQt6>=6.6
 numpy>=1.26
