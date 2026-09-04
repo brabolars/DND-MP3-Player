@@ -86,10 +86,20 @@ jobs:
         shell: pwsh
         run: |
           python -c "import nacl.secret; print('PyNaCl importable:', True)"
-          $command = python build.py --dry-run
-          $command
-          if ($command -notmatch '--collect-all nacl') {
-            throw "build.py is missing --collect-all nacl; PyNaCl will not be bundled"
+
+          # Out-String matters: `python build.py --dry-run` returns an ARRAY of
+          # lines, and in PowerShell `array -notmatch x` filters rather than
+          # returning a boolean — it yields every non-matching line, which is
+          # truthy, so the check fired on every build.  Flatten it to one string
+          # and use -match, which is a boolean on a scalar.
+          $output = (python build.py --dry-run | Out-String)
+          Write-Host $output
+
+          foreach ($flag in @('--collect-all nacl', '--collect-all disnake')) {
+            if (-not ($output -match [regex]::Escape($flag))) {
+              throw "build.py is missing $flag"
+            }
+            Write-Host "ok: $flag"
           }
 
       - name: Build
@@ -109,6 +119,7 @@ jobs:
           Copy-Item dist/DnDMusicManager.exe $stage/
           Copy-Item README.md $stage/
           Copy-Item .env.example $stage/
+          Copy-Item docs/PLAYER-GUIDE.md $stage/ -ErrorAction SilentlyContinue
           Copy-Item docs/LOUDNESS.md $stage/ -ErrorAction SilentlyContinue
           @"
           D&D Music Manager
@@ -119,6 +130,9 @@ jobs:
              Only needed for the bot; to use it as a plain music player,
              choose Output = "This PC" and ignore the prompt.
           3. Music, playlists and settings are stored next to the .exe.
+
+          Read PLAYER-GUIDE.md for adding music, volume, and what to do if
+          something is missing.
 
           FFmpeg and Opus are bundled — nothing else to install.
           "@ | Set-Content $stage/START-HERE.txt
