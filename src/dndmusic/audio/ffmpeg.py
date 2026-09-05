@@ -9,6 +9,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from .process import hidden_process_kwargs
 
 
 #: Set by the app at startup from the saved setting.  Everything that shells
@@ -43,7 +44,8 @@ def looks_like_ffmpeg(path: str) -> bool:
         return False
     try:
         result = subprocess.run(
-            [str(candidate), "-version"], capture_output=True, text=True, timeout=10
+            [str(candidate), "-version"], capture_output=True, text=True, timeout=10,
+            **hidden_process_kwargs(),
         )
     except Exception:
         return False
@@ -90,7 +92,8 @@ def detect_ffmpeg(timeout: int = 10) -> FfmpegStatus:
     for name in candidates:
         try:
             result = subprocess.run(
-                [name, "-version"], capture_output=True, text=True, timeout=timeout
+                [name, "-version"], capture_output=True, text=True, timeout=timeout,
+                **hidden_process_kwargs(),
             )
             if result.returncode == 0:
                 status.found = True

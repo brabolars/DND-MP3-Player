@@ -32,7 +32,7 @@ def add(source, value, bus=MUSIC_BUS, trim=1.0, norm=1.0, label=""):
             bus=bus,
             gain=GainRamp(1.0),
             trim=GainRamp(trim),
-            norm_gain=norm,
+            norm_gain=GainRamp(norm),
             label=label,
         )
     )
@@ -289,3 +289,16 @@ def test_cleanup_is_idempotent():
     assert source.is_active is False
     source.cleanup()          # disnake calls this too; must not double-act
     assert source.read() == b""
+
+
+def test_normalisation_gain_glides_rather_than_jumping():
+    """A correction arriving mid-playback must not click."""
+    source = MixingSource()
+    voice = add(source, 20_000, norm=0.2)
+    assert first(source.read()) == 4_000
+
+    voice.norm_gain.set(1.0, 200)          # measurement came back louder
+    values = [first(source.read()) for _ in range(12)]
+    assert values == sorted(values), values
+    assert values[0] > 4_000                       # moved off the old gain
+    assert values[-1] >= 19_990                    # arrived (float dust aside)

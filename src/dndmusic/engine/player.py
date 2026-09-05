@@ -53,6 +53,20 @@ INSTANT_MS = 0
 #: hiss.  Playback resumes transparently the moment something is queued.
 IDLE_SUSPEND_SECONDS = 3.0
 
+#: What to assume about an unmeasured track so playback can start immediately.
+#: Measuring means decoding the whole file — 25 seconds for a 10-minute track on
+#: a fast machine, far worse on a slow one — and sampling the first minute is not
+#: an option: on material that varies it can be 9 dB out, which is exactly the
+#: inconsistency normalisation exists to remove.
+#:
+#: So we guess *loud* (a loudness-war master) and correct once the real figure
+#: arrives.  Guessing loud means the provisional gain is a large cut: a quiet
+#: track starts too quiet and comes up, which is far kinder than the reverse.
+PROVISIONAL_LUFS = -9.0
+
+#: How long the correction takes to glide in, once measured.
+NORMALISATION_CORRECTION_MS = 800
+
 
 @dataclass
 class LayerInfo:
@@ -211,6 +225,12 @@ class MusicEngine:
         self._loop_provider: Callable[[], Optional[asyncio.AbstractEventLoop]] = lambda: None
         #: Fallback loop, for running without a bot at all (local playback).
         self._own_loop: Optional[asyncio.AbstractEventLoop] = None
+        #: Tracks currently being measured, so replaying one does not start a
+        #: second analysis of the same file.
+        self._measuring: set = set()
+        #: Scheduled work, cancelled on shutdown so nothing complains about
+        #: pending tasks when the loop stops.
+        self._pending: set = set()
         #: Number of voices being prepared right now.  The idle suspend refuses
         #: to fire while any start is in flight, so a slow first measurement
         #: cannot have the mixer pulled out from under it.
@@ -475,7 +495,7 @@ class MusicEngine:
         if loudness is None:
             return None
         voice = self._music_voice
-        norm = voice.norm_gain if (voice and self.settings.normalise) else 1.0
+        norm = voice.norm_gain.target if (voice and self.settings.normalise) else 1.0
         combined = norm * self.settings.music_volume * self.master_gain
         if combined <= 0:
             return None
@@ -561,11 +581,13 @@ class MusicEngine:
         for voice in self.source.voices():
             loudness = self._loudness_for_label(voice.label)
             if loudness is not None:
-                voice.norm_gain = normalisation_gain(
-                    loudness,
-                    target,
-                    self.settings.ceiling_dbtp,
-                    self.settings.allow_boost,
+                voice.norm_gain.set(
+                    normalisation_gain(
+                        loudness,
+                        target,
+                        self.settings.ceiling_dbtp,
+                        self.settings.allow_boost,
+                    )
                 )
         self.debug.log(f"Normalisation target: {target:.1f} LUFS", "MIX")
         self.on_layers_changed()
@@ -591,25 +613,23 @@ class MusicEngine:
         return None
 
     async def _normalisation_for(self, track: MusicTrack) -> float:
-        """Measure the track if needed, then convert to a linear gain."""
+        """The gain to start this track at.
+
+        Measured tracks give the exact figure instantly.  An unmeasured one gets
+        a deliberately conservative guess so playback can begin now, with the
+        real measurement running in the background.
+        """
         if not self.settings.normalise or self.library is None:
             return 1.0
+
         loudness = self.library.loudness_of(track)
-        if loudness is None:
-            # First play of this file: measure it once, off the loop.
-            loudness = await asyncio.to_thread(self.library.measure_track, track)
-            if loudness is not None:
-                try:
-                    self.library.save()
-                except Exception as exc:
-                    self.debug.log(f"Could not cache loudness: {exc}", "ERR")
-        gain = normalisation_gain(
-            loudness,
-            self.settings.target_lufs,
-            self.settings.ceiling_dbtp,
-            self.settings.allow_boost,
-        )
         if loudness is not None:
+            gain = normalisation_gain(
+                loudness,
+                self.settings.target_lufs,
+                self.settings.ceiling_dbtp,
+                self.settings.allow_boost,
+            )
             applied = gain_db_for_target(
                 loudness,
                 self.settings.target_lufs,
@@ -623,7 +643,66 @@ class MusicEngine:
                 f"peak {loudness.true_peak:.1f} dBTP -> {applied:+.1f} dB{note}",
                 "NORM",
             )
-        return gain
+            return gain
+
+        provisional = normalisation_gain(
+            Loudness(lufs=PROVISIONAL_LUFS, true_peak=-1.0),
+            self.settings.target_lufs,
+            self.settings.ceiling_dbtp,
+            self.settings.allow_boost,
+        )
+        self.debug.log(
+            f"{track.display_name}: not measured yet — starting at "
+            f"{PROVISIONAL_LUFS:.0f} LUFS assumed, measuring in the background",
+            "NORM",
+        )
+        return provisional
+
+    async def _measure_in_background(self, track: MusicTrack, voice: Voice) -> None:
+        """Measure a track while it plays, then glide to the right gain."""
+        if self.library is None or track.path in self._measuring:
+            return
+        self._measuring.add(track.path)
+        try:
+            loudness = await asyncio.to_thread(self.library.measure_track, track)
+        finally:
+            self._measuring.discard(track.path)
+        if loudness is None:
+            return
+        try:
+            self.library.save()
+        except Exception as exc:
+            self.debug.log(f"Could not cache loudness: {exc}", "ERR")
+
+        gain = normalisation_gain(
+            loudness,
+            self.settings.target_lufs,
+            self.settings.ceiling_dbtp,
+            self.settings.allow_boost,
+        )
+        applied = gain_db_for_target(
+            loudness,
+            self.settings.target_lufs,
+            self.settings.ceiling_dbtp,
+            self.settings.allow_boost,
+        )
+        self.debug.log(
+            f"{track.display_name}: measured {loudness.lufs:.1f} LUFS "
+            f"-> correcting to {applied:+.1f} dB",
+            "NORM",
+        )
+        # Measuring takes seconds, during which the voice that triggered it may
+        # have been replaced — by a crossfade, or by the DM hitting play again.
+        # Correct every voice currently playing this track, not just that one.
+        corrected = 0
+        if self.source is not None:
+            for playing in self.source.voices():
+                if playing is voice or playing.label == track.display_name:
+                    playing.norm_gain.set(gain, NORMALISATION_CORRECTION_MS)
+                    corrected += 1
+        if corrected:
+            self.debug.log(f"Applied to {corrected} playing voice(s)", "NORM")
+        self.on_layers_changed()
 
     # ═════════════════════════════════════════════════════════════════════
     #  Layers — several tracks at once, each with its own fader
@@ -644,8 +723,8 @@ class MusicEngine:
                     label=voice.label or "(unnamed)",
                     bus=voice.bus,
                     trim=voice.trim.target,
-                    normalisation_db=round(20 * math.log10(voice.norm_gain), 1)
-                    if voice.norm_gain > 0
+                    normalisation_db=round(20 * math.log10(voice.norm_gain.target), 1)
+                    if voice.norm_gain.target > 0
                     else 0.0,
                     looping=voice.loop,
                     paused=voice.paused,
@@ -857,7 +936,7 @@ class MusicEngine:
                 stream=stream,
                 bus=MUSIC_BUS,
                 gain=GainRamp(0.0 if fade_ms else 1.0),
-                norm_gain=norm_gain,
+                norm_gain=GainRamp(norm_gain),
                 label=track.display_name,
                 loop=loop_track,
                 on_finish=self._music_voice_finished,
@@ -887,6 +966,9 @@ class MusicEngine:
                 f"(loop={loop_track}, fade={fade_ms}ms)",
                 "PLAY",
             )
+            if self.settings.normalise and self.library is not None:
+                if self.library.loudness_of(track) is None:
+                    self._schedule(self._measure_in_background(track, voice))
             self.debug.log(self.gain_chain_report(track, norm_gain), "GAIN")
         except Exception as exc:
             if stream is not None:
@@ -963,7 +1045,7 @@ class MusicEngine:
                 stream=stream,
                 bus=AMBIENT_BUS,
                 gain=GainRamp(0.0),
-                norm_gain=norm_gain,
+                norm_gain=GainRamp(norm_gain),
                 label=track.display_name,
                 loop=self.settings.loop_ambient,
             )
@@ -1015,7 +1097,7 @@ class MusicEngine:
                     stream=stream,
                     bus=SFX_BUS,
                     gain=GainRamp(1.0),
-                    norm_gain=norm_gain,
+                    norm_gain=GainRamp(norm_gain),
                     label=track.display_name,
                 )
             )
@@ -1067,11 +1149,16 @@ class MusicEngine:
             self.debug.log("No event loop available — command dropped", "ERR")
             self.on_error("Could not start playback: no event loop.")
             return False
-        asyncio.run_coroutine_threadsafe(coro, loop)
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        self._pending.add(future)
+        future.add_done_callback(self._pending.discard)
         return True
 
     def shutdown(self) -> None:
         """Tear everything down, including our own loop if we started one."""
+        for future in list(self._pending):
+            future.cancel()
+        self._pending.clear()
         self._teardown_source()
         own, self._own_loop = self._own_loop, None
         if own is not None and not own.is_closed():

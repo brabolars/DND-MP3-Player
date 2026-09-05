@@ -15,6 +15,7 @@ import threading
 from typing import Callable, Optional, Protocol, Sequence
 
 from .ffmpeg import executable as ffmpeg_executable
+from .process import hidden_process_kwargs
 from .pcm import FFMPEG_OUTPUT_ARGS, FRAME_BYTES, SILENCE, pad_frame
 
 DEFAULT_PREBUFFER_FRAMES = 25   # 0.5 s
@@ -80,6 +81,7 @@ class FFmpegPcmStream:
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
             bufsize=FRAME_BYTES * 8,
+            **hidden_process_kwargs(),
         )
         self._thread = threading.Thread(
             target=self._pump, name=f"pcm-{id(self):x}", daemon=True

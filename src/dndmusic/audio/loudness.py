@@ -34,6 +34,8 @@ import subprocess
 from dataclasses import dataclass
 from typing import Optional
 
+from .process import hidden_process_kwargs
+
 #: Music playing under a conversation is not the "anchor element" — the speech
 #: is.  Discord applies AGC to microphone input, so voices arrive auto-levelled
 #: at roughly -18 LUFS, while a bot bypasses AGC entirely and arrives at exactly
@@ -105,7 +107,10 @@ def measure(path: str, executable: Optional[str] = None, timeout: int = 120) -> 
         "-f", "null", "-",
     ]
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=timeout,
+            **hidden_process_kwargs(),
+        )
     except Exception:
         return None
 

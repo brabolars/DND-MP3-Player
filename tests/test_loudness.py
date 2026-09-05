@@ -189,3 +189,29 @@ class TestRealMeasurement:
             check=True,
         )
         assert measure(str(path)) is None
+
+
+# ── measuring must not block playback ───────────────────────────────────────
+
+def test_provisional_gain_assumes_a_loud_master():
+    """Guessing loud means an unmeasured track starts quiet and comes up,
+    never the reverse — the safe direction to be wrong in."""
+    from dndmusic.engine.player import PROVISIONAL_LUFS
+
+    assert PROVISIONAL_LUFS >= -12.0, "guessing quiet risks a blast on first play"
+
+    provisional = gain_db_for_target(
+        Loudness(lufs=PROVISIONAL_LUFS, true_peak=-1.0), -24.0
+    )
+    typical = gain_db_for_target(Loudness(lufs=-14.0, true_peak=-1.0), -24.0)
+    assert provisional < typical, "provisional gain must be the more conservative"
+
+
+def test_a_quiet_track_is_corrected_upwards_after_measurement():
+    from dndmusic.engine.player import PROVISIONAL_LUFS
+
+    provisional = gain_db_for_target(
+        Loudness(lufs=PROVISIONAL_LUFS, true_peak=-1.0), -24.0
+    )
+    measured = gain_db_for_target(Loudness(lufs=-26.0, true_peak=-8.0), -24.0)
+    assert measured > provisional

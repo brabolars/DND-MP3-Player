@@ -107,7 +107,9 @@ class Voice:
     bus: str
     gain: GainRamp
     trim: GainRamp = field(default_factory=lambda: GainRamp(1.0))
-    norm_gain: float = 1.0
+    #: A ramp, not a plain float: loudness may be measured *after* playback has
+    #: started, and the correction has to glide in rather than click.
+    norm_gain: GainRamp = field(default_factory=lambda: GainRamp(1.0))
     label: str = ""
     loop: bool = False
     paused: bool = False
@@ -284,9 +286,10 @@ class MixingSource(AudioSourceBase):
                 finished.append(voice)
                 continue
 
+            normalisation = voice.norm_gain.advance()
             gain = envelope * trim * bus_gains.get(voice.bus, 1.0)
             if self.normalise:
-                gain *= voice.norm_gain
+                gain *= normalisation
             if gain <= 0.0:
                 continue  # still consumed the frame, so timing stays correct
             samples = frame_to_array(frame)
