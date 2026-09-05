@@ -86,6 +86,7 @@ jobs:
         shell: pwsh
         run: |
           python -c "import nacl.secret; print('PyNaCl importable:', True)"
+          python -c "import _cffi_backend; print('cffi backend importable:', True)"
 
           # Out-String matters: `python build.py --dry-run` returns an ARRAY of
           # lines, and in PowerShell `array -notmatch x` filters rather than
@@ -95,7 +96,8 @@ jobs:
           $output = (python build.py --dry-run | Out-String)
           Write-Host $output
 
-          foreach ($flag in @('--collect-all nacl', '--collect-all disnake')) {
+          foreach ($flag in @('--collect-all nacl', '--collect-all disnake',
+                              '--collect-all cffi', '--hidden-import _cffi_backend')) {
             if (-not ($output -match [regex]::Escape($flag))) {
               throw "build.py is missing $flag"
             }

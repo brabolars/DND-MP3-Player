@@ -213,3 +213,29 @@ def test_adding_bundle_to_path_is_a_noop_from_source(monkeypatch):
     monkeypatch.setenv("PATH", "/usr/bin")
     assert config.add_bundle_to_path() is False
     assert os.environ["PATH"] == "/usr/bin"
+
+
+def test_voice_encryption_failure_records_the_reason(monkeypatch):
+    """"PyNaCl missing" and "PyNaCl bundled without its cffi backend" need
+    different fixes, so the reason is kept rather than swallowed."""
+    import builtins
+
+    from dndmusic import discord_api
+
+    real_import = builtins.__import__
+
+    def broken(name, *args, **kwargs):
+        if name.startswith("nacl"):
+            raise ModuleNotFoundError("No module named '_cffi_backend'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", broken)
+    assert discord_api.voice_encryption_available() is False
+    assert "_cffi_backend" in discord_api.voice_encryption_error
+
+
+def test_successful_check_clears_the_reason():
+    from dndmusic import discord_api
+
+    if discord_api.voice_encryption_available():
+        assert discord_api.voice_encryption_error == ""

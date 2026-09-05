@@ -41,15 +41,25 @@ def opus_loaded() -> bool:
     return bool(DISCORD_AVAILABLE and disnake.opus.is_loaded())
 
 
+#: Why the last voice-encryption check failed, if it did.  "No module named
+#: '_cffi_backend'" means PyNaCl is bundled but its cffi backend is not — a
+#: packaging fault, not a missing install.
+voice_encryption_error: str = ""
+
+
 def voice_encryption_available() -> bool:
     """PyNaCl, which disnake needs to encrypt the voice stream.
 
     disnake imports it lazily, so a missing PyNaCl only shows up when someone
-    runs !join.  Reporting it at startup turns a confusing runtime error into a
-    line in the banner.
+    runs !join.  Checking at startup turns that into a line in the banner — and
+    the recorded reason distinguishes "not installed" from "installed but its
+    native dependency is missing", which need different fixes.
     """
+    global voice_encryption_error
     try:
         import nacl.secret  # noqa: F401
-    except Exception:
+    except Exception as exc:
+        voice_encryption_error = f"{type(exc).__name__}: {exc}"
         return False
+    voice_encryption_error = ""
     return True

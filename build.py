@@ -39,6 +39,11 @@ HIDDEN_IMPORTS = [
     "disnake.opus",
     "PyQt6.QtMultimedia",   # local "This PC" output
     "PyQt6.QtNetwork",
+    # PyNaCl is a cffi extension: nacl/_sodium is compiled against cffi and
+    # imports _cffi_backend at load time.  Collecting nacl alone bundles the
+    # Python modules but not that backend, so `import nacl.secret` fails with
+    # "No module named '_cffi_backend'" — a bundled PyNaCl that cannot load.
+    "_cffi_backend",
 ]
 
 EXCLUDES = ["tkinter", "matplotlib", "PyQt5", "PySide6"]
@@ -56,7 +61,7 @@ EXCLUDES = ["tkinter", "matplotlib", "PyQt5", "PySide6"]
 #: takes package *data and binaries* — disnake ships libopus-0.x64.dll in its
 #: own bin/ folder, which is where audio/opus.py finds it first.  That is a
 #: second, download-free route to working voice audio.
-COLLECT_ALL = ["nacl", "dave", "disnake"]
+COLLECT_ALL = ["nacl", "dave", "disnake", "cffi"]
 
 
 def bundled_binaries() -> list[str]:

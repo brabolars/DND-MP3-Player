@@ -417,10 +417,12 @@ If PyNaCl is reported missing:
 
 - **running from source:** `pip install -r requirements.txt` (PyNaCl is listed
   explicitly, so this cannot silently skip it)
-- **running the .exe:** it was built without PyNaCl bundled. `build.py` passes
-  `--collect-all nacl`, which includes the compiled `_sodium` extension as well
-  as the Python modules — so make sure the .exe came from a release built
-  *after* that change, not an earlier one.
+- **running the .exe:** the log now says *why*. If the reason is
+  `No module named '_cffi_backend'`, PyNaCl **is** bundled but the cffi backend
+  it is compiled against is not — PyNaCl is a cffi extension, and
+  `--collect-all nacl` does not pull cffi in with it. `build.py` passes
+  `--collect-all cffi` and `--hidden-import _cffi_backend` for exactly this, so
+  check the .exe came from a build after that change.
 
 ### Opus: a library, not a program
 
@@ -483,6 +485,12 @@ Ask for `logs/session-*.log` from beside their .exe. The first few lines list
 FFmpeg, disnake, Opus and PyNaCl, which settles most "it doesn't work" reports
 immediately. For anything deeper, `python build.py --console` produces a build
 that keeps a console window open.
+
+## Handing it to someone else
+
+`docs/PLAYER-GUIDE.md` is written for players rather than developers — install,
+add music, volume, and what to do when the red warning panel appears. It is
+copied into the release zip alongside the .exe.
 
 ## Security
 

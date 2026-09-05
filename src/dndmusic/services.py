@@ -29,6 +29,7 @@ from .core.categories import CategoryRegistry
 from .core.debug import DebugLogger
 from .core.library import MediaLibrary
 from .core.playlist import PlaylistManager
+from . import discord_api
 from .discord_api import DISCORD_AVAILABLE, opus_loaded, voice_encryption_available
 from .engine.player import MusicEngine, PlaybackSettings
 
@@ -52,7 +53,8 @@ def environment_report(ffmpeg: FfmpegStatus) -> List[str]:
         f"FFmpeg: {ffmpeg.label}",
         f"Disnake: {'OK' if DISCORD_AVAILABLE else 'NOT INSTALLED'}",
         f"Opus: {'OK' if opus_loaded() else 'MISSING'}",
-        f"PyNaCl: {'OK' if voice_encryption_available() else 'MISSING — voice will fail'}",
+        f"PyNaCl: {'OK' if voice_encryption_available() else 'MISSING — voice will fail'}"
+        + (f" [{discord_api.voice_encryption_error}]" if not voice_encryption_available() else ""),
     ]
 
 
@@ -72,7 +74,9 @@ def missing_requirements(ffmpeg: FfmpegStatus, discord_enabled: bool = True) -> 
             if not opus_loaded():
                 missing.append("Opus — voice output will be silent")
             if not voice_encryption_available():
-                missing.append("PyNaCl — !join will fail with a voice error")
+                reason = discord_api.voice_encryption_error
+                detail = f" ({reason})" if reason else ""
+                missing.append(f"PyNaCl — !join will fail with a voice error{detail}")
     return missing
 
 
